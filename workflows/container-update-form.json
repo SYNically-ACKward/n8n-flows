@@ -17,8 +17,9 @@
         "formFields": {
           "values": [
             {
-              "fieldLabel": "Service",
+              "fieldLabel": "Internal Services",
               "fieldType": "dropdown",
+              "multiselect": true,
               "fieldOptions": {
                 "values": [
                   {
@@ -29,13 +30,26 @@
                   },
                   {
                     "option": "example-service-3"
-                  },
-                  {
-                    "option": "dmz:example-service"
                   }
                 ]
               },
-              "requiredField": true
+              "requiredField": false
+            },
+            {
+              "fieldLabel": "DMZ Services",
+              "fieldType": "dropdown",
+              "multiselect": true,
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "dmz-example-service-1"
+                  },
+                  {
+                    "option": "dmz-example-service-2"
+                  }
+                ]
+              },
+              "requiredField": false
             }
           ]
         },
@@ -43,34 +57,31 @@
       }
     },
     {
-      "id": "fd8bdd6b-5db7-4177-8719-3d081d77186e",
-      "name": "Route by Host",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
+      "id": "8bfd7b6e-efd4-40f7-bf53-1955a01d43e0",
+      "name": "Split Internal Services",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
       "position": [
         280,
-        0
+        -120
       ],
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "leftValue": "",
-            "typeValidation": "strict"
-          },
-          "conditions": [
-            {
-              "id": "6b5f8466-8b69-4b8b-9812-69eae1442f86",
-              "leftValue": "={{ $json.Service }}",
-              "rightValue": "dmz:",
-              "operator": {
-                "type": "string",
-                "operation": "startsWith"
-              }
-            }
-          ],
-          "combinator": "and"
-        }
+        "fieldToSplitOut": "Internal Services",
+        "options": {}
+      }
+    },
+    {
+      "id": "e1e78d5c-ea05-480b-93ee-79e0244f3477",
+      "name": "Split DMZ Services",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        280,
+        120
+      ],
+      "parameters": {
+        "fieldToSplitOut": "DMZ Services",
+        "options": {}
       }
     },
     {
@@ -90,7 +101,7 @@
       },
       "parameters": {
         "authentication": "privateKey",
-        "command": "=cd <path-to-compose-files>/{{ $json.Service }} && docker compose pull && docker compose up -d 2>&1"
+        "command": "=cd <path-to-compose-files>/{{ $json['Internal Services'] }} && docker compose pull && docker compose up -d 2>&1"
       }
     },
     {
@@ -110,17 +121,93 @@
       },
       "parameters": {
         "authentication": "privateKey",
-        "command": "=cd <path-to-dmz-compose-files>/{{ $json.Service.replace(\"dmz:\", \"\") }} && docker compose pull && docker compose up -d 2>&1"
+        "command": "=cd <path-to-dmz-compose-files>/{{ $json['DMZ Services'] }} && docker compose pull && docker compose up -d 2>&1"
+      }
+    },
+    {
+      "id": "d5d794da-09c4-4cb2-87dd-4eb24f52401c",
+      "name": "Tag Internal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        -120
+      ],
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'Internal',\n    serviceName: $('Split Internal Services').item.json['Internal Services'],\n  },\n};",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "0d7bbcea-ac55-4b14-9473-ab595161a92d",
+      "name": "Tag DMZ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        120
+      ],
+      "parameters": {
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'DMZ',\n    serviceName: $('Split DMZ Services').item.json['DMZ Services'],\n  },\n};",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "b7292da8-7d70-4639-a096-cacc88fa4e08",
+      "name": "Code in JavaScript",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const stdout = $json.stdout || '';\nconst stderr = $json.stderr || '';\nconst exitCode = $json.code;\n// docker compose pull/up write normal progress output to stderr even on success,\n// so exit code alone is the reliable success signal here.\nconst success = exitCode == 0 || exitCode === '0';\n\nreturn {\n  json: {\n    ...$json,\n    status: success ? 'success' : 'failure',\n    excerpt: (success ? stdout : (stderr || stdout)).slice(-2000),\n  },\n};",
+        "mode": "runOnceForEachItem"
+      }
+    },
+    {
+      "id": "ab91573e-3cb6-4152-8501-0776e06b6780",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1320,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "e66c3ef2-5a95-4bc4-b301-e3846131c24a",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
       }
     },
     {
       "id": "t3333333-cccc-4ccc-cccc-333333333333",
-      "name": "Notify Complete",
+      "name": "Notify Success",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        840,
-        0
+        1560,
+        -80
       ],
       "webhookId": "8b55852a-0c68-4e9b-a195-63af0fd49b94",
       "credentials": {
@@ -131,11 +218,35 @@
       },
       "parameters": {
         "chatId": "YOUR_TELEGRAM_CHAT_ID",
-        "text": "=✅ <b>Update Complete</b>\n\n<b>Host:</b> {{ $('Update Form').first().json.Service.startsWith('dmz:') ? 'DMZ' : 'Internal' }}\n<b>Service:</b> <code>{{ $('Update Form').first().json.Service.replace('dmz:', '')}}</code>\n\n<pre>{{ $json.stdout.slice(-2000) }}</pre>",
+        "text": "=✅ <b>Update Complete</b>\n\n<b>Host:</b> {{ $json.hostLabel }}\n<b>Service:</b> <code>{{ $json.serviceName }}</code>\n\n<pre>{{ $json.excerpt }}</pre>",
         "additionalFields": {
           "parse_mode": "HTML"
         }
       }
+    },
+    {
+      "id": "d7731cba-49fc-4150-b63d-1418470ad614",
+      "name": "Notify Failure",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1560,
+        80
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      },
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=❌ <b>Update Failed</b>\n\n<b>Host:</b> {{ $json.hostLabel }}\n<b>Service:</b> <code>{{ $json.serviceName }}</code>\n\n<pre>{{ $json.excerpt }}</pre>",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "webhookId": "44c64add-80ed-4b71-aeb1-71dea0e6fa82"
     }
   ],
   "connections": {
@@ -143,25 +254,34 @@
       "main": [
         [
           {
-            "node": "Route by Host",
+            "node": "Split Internal Services",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Split DMZ Services",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Route by Host": {
+    "Split Internal Services": {
+      "main": [
+        [
+          {
+            "node": "Run Update via SSH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split DMZ Services": {
       "main": [
         [
           {
             "node": "Run Update via SSH (DMZ)",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Run Update via SSH",
             "type": "main",
             "index": 0
           }
@@ -172,7 +292,7 @@
       "main": [
         [
           {
-            "node": "Notify Complete",
+            "node": "Tag Internal",
             "type": "main",
             "index": 0
           }
@@ -183,7 +303,58 @@
       "main": [
         [
           {
-            "node": "Notify Complete",
+            "node": "Tag DMZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Internal": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag DMZ": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Notify Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Failure",
             "type": "main",
             "index": 0
           }

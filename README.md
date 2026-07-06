@@ -18,15 +18,21 @@ below, and the per-workflow doc for details specific to that flow.
 |---|---|---|
 | [Error Handler](docs/error-handler.md) | Error Trigger | Central error handler — sends a Telegram message when any workflow that references it fails. Import this one first. |
 | [Update Ghost Blog](docs/update-ghost-blog.md) | Schedule (weekly) | SSHes into the host running Ghost and runs `ghost update`. |
-| [Update Ghost Ubuntu](docs/update-ghost-ubuntu.md) | Schedule (daily) | SSHes into the Ghost server and runs `apt update && apt upgrade`. |
-| [Update AMP Server](docs/update-amp-server.md) | Schedule (daily) | SSHes into a separate server (password auth) and runs `apt update && apt upgrade`. |
+| [Nightly Server Updates](docs/nightly-server-updates.md) | Schedule (daily, ×2) | OS-level `apt`/Docker-cleanup patching across four hosts in one workflow — including a fire-and-forget pattern for safely patching the Docker host that n8n itself runs on. |
 | [DIUN Update Notifier](docs/diun-update-notifier.md) | Webhook | Receives [Diun](https://crazymax.dev/diun/) container-image-update notifications and forwards them to Telegram with a link to trigger an update. |
-| [Container Update Form](docs/container-update-form.md) | Form | A web form to pick a Docker Compose service and have n8n SSH in, `docker compose pull && up -d` it, and report the result. |
+| [Container Update Form](docs/container-update-form.md) | Form | A web form to multi-select Docker Compose services across two hosts and have n8n SSH in, `docker compose pull && up -d` each, and report per-service results. |
 
 Workflows that existed on the source instance but were dev/test scaffolding
 with no real usage (an in-progress "approval" variant, a default "My workflow"
-stub, one never-activated draft) were left out — this repo is only the
-workflows that were actually active and running.
+stub, a couple of now-archived drafts superseded by the consolidation above)
+were left out — this repo is only the workflows that were actually active
+and running.
+
+**Note:** what were previously two separate workflows — Update Ghost Ubuntu
+and Update AMP Server — plus a short-lived Update DMZ Server draft have since
+been consolidated into the single Nightly Server Updates workflow above. If
+you pulled an earlier version of this repo, replace those two JSON files with
+the new one.
 
 ## Prerequisites
 

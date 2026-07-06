@@ -1,0 +1,461 @@
+{
+  "name": "Nightly Server Updates (AMP / DMZ / Ghost / Docker Host)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        160,
+        40
+      ],
+      "id": "c1f1cc89-d03e-4b3f-8ad3-2e70d4b7c283",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo apt upgrade -y 2>&1 && docker container prune -f 2>&1 && docker network prune -f 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        400,
+        -160
+      ],
+      "id": "6ebcb2ed-3e8f-465d-a084-94ad0dc9c3f4",
+      "name": "Update AMP",
+      "alwaysOutputData": true,
+      "credentials": {
+        "sshPassword": {
+          "id": "REPLACE_ME",
+          "name": "SSH Password - AMP Server"
+        }
+      }
+    },
+    {
+      "id": "3e1fef4c-f96d-4f87-91b9-c24447cb56c2",
+      "name": "Update DMZ",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        400,
+        40
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo apt upgrade -y 2>&1 && docker container prune -f 2>&1 && docker network prune -f 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - DMZ Docker Host"
+        }
+      }
+    },
+    {
+      "id": "f924e4be-0692-490c-89c6-5e72efcfd487",
+      "name": "Update Ghost",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        400,
+        240
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "apt update 2>&1 && echo \"---UPDATE DONE---\" && apt upgrade -y 2>&1"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - Ghost Server"
+        }
+      }
+    },
+    {
+      "id": "27d39c82-e355-401d-b616-e9f69709100b",
+      "name": "Tag AMP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        -160
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'AMP Server',\n    hasDocker: true,\n  },\n};"
+      }
+    },
+    {
+      "id": "9cb222b6-1a42-44ce-8393-bc5a6ad1a2b7",
+      "name": "Tag DMZ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        40
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'DMZ Server',\n    hasDocker: true,\n  },\n};"
+      }
+    },
+    {
+      "id": "d6945bae-acee-4a89-8f0b-b4f14277d728",
+      "name": "Tag Ghost",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        240
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'Ghost (Ubuntu)',\n    hasDocker: false,\n  },\n};"
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const stdout = $json.stdout || '';\nconst stderr = $json.stderr || '';\nconst exitCode = $json.code;\nconst hasDocker = $json.hasDocker;\nconst failed = exitCode != 0 || !!stderr;\n\nconst stages = [\n  { label: 'Refresh package lists (apt update)', test: s => s.includes('---UPDATE DONE---') },\n  { label: 'Upgrade installed packages (apt upgrade)', test: s => /\\d+ upgraded, \\d+ newly installed/.test(s) },\n];\nif (hasDocker) {\n  stages.push({ label: 'Docker cleanup (containers, networks, dangling images, build cache)', test: () => !failed });\n}\n\nlet reachedIndex = -1;\nfor (let i = 0; i < stages.length; i++) {\n  if (stages[i].test(stdout)) reachedIndex = i;\n}\n\nconst checklist = stages.map((stage, i) => {\n  if (i <= reachedIndex) return `✅ ${stage.label}`;\n  if (i === reachedIndex + 1 && failed) return `❌ ${stage.label}`;\n  return `⏭️ ${stage.label} (not reached)`;\n}).join('\\n');\n\nreturn {\n  json: {\n    ...$json,\n    status: failed ? 'failure' : 'success',\n    summary: failed\n      ? `${checklist}\\n\\nError detail:\\n${stderr || '(no stderr captured — check exit code ' + exitCode + ')'}`\n      : checklist,\n  },\n};",
+        "mode": "runOnceForEachItem"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        40
+      ],
+      "id": "0bd8e666-e371-4667-8e59-94ef70e06b1c",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bc0dbe7d-106b-474d-89f6-32e341201548",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        40
+      ],
+      "id": "84951580-0dd5-4dfe-a252-4fd01864dc51",
+      "name": "Check Success"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=✅ Update complete on {{ $json.hostLabel }}\n\n{{ $json.summary }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        -40
+      ],
+      "id": "93a7ace7-d660-410e-a9a2-34031e26efb4",
+      "name": "Notify Success",
+      "webhookId": "b29b2d19-1c4f-47b5-8e4d-391ea6631a27",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=❌ Update failed on {{ $json.hostLabel }}\n\n{{ $json.summary }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1360,
+        120
+      ],
+      "id": "37cfc118-4419-43c1-9037-5ad5f23bf52c",
+      "name": "Notify Failure",
+      "webhookId": "46b033c8-26b9-413b-b771-14a1e8235583",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "8d5d1ed7-f0b8-4eca-847f-9d7b1b7358a3",
+      "name": "Kickoff Docker Host Update",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        400,
+        440
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "nohup setsid bash -c 'sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo apt upgrade -y 2>&1 && docker container prune -f 2>&1 && docker network prune -f 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1; echo \"===EXIT_CODE:$?===\"' > ~/host-update.log 2>&1 < /dev/null & echo \"Update kicked off in background - check ~/host-update.log\""
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - Internal Docker Host"
+        }
+      }
+    },
+    {
+      "id": "e5c04c1e-582c-4eea-97a8-6312578eb5be",
+      "name": "Check Trigger (2:20am)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        160,
+        640
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "20 2 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "0481e1d1-224c-4fdf-a1c4-de526563c805",
+      "name": "Check Docker Host Update",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        400,
+        640
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cat ~/host-update.log 2>/dev/null || echo \"NO_LOG_FOUND\""
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - Internal Docker Host"
+        }
+      }
+    },
+    {
+      "id": "c0fa21c1-2f3c-45ea-9012-149b8270be9e",
+      "name": "Tag Docker Host",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        640
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const log = $json.stdout || '';\nconst match = log.match(/===EXIT_CODE:(-?\\d+)===/);\nconst exitCode = match ? parseInt(match[1], 10) : -1;\n\nreturn {\n  json: {\n    code: exitCode,\n    stdout: log || '(no log found — update may not have started, or host may have restarted mid-run)',\n    stderr: '',\n    hostLabel: 'Docker Host (n8n)',\n    hasDocker: true,\n  },\n};"
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Update AMP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update DMZ",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update Ghost",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Kickoff Docker Host Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update AMP": {
+      "main": [
+        [
+          {
+            "node": "Tag AMP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update DMZ": {
+      "main": [
+        [
+          {
+            "node": "Tag DMZ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Ghost": {
+      "main": [
+        [
+          {
+            "node": "Tag Ghost",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag AMP": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag DMZ": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Ghost": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Notify Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Trigger (2:20am)": {
+      "main": [
+        [
+          {
+            "node": "Check Docker Host Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Docker Host Update": {
+      "main": [
+        [
+          {
+            "node": "Tag Docker Host",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tag Docker Host": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {}
+}
