@@ -1,0 +1,184 @@
+{
+  "name": "Update Ghost Blog",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "runuser -l <ghost-linux-user> -c 'cd <path-to-ghost-install> && ghost update' 2>&1"
+      },
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        624,
+        0
+      ],
+      "id": "cb9ad28c-de35-47b5-8af0-dd5ee5c3d23a",
+      "name": "Execute a command",
+      "alwaysOutputData": true,
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - Ghost Server"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "7a43a39a-3363-45b8-a0b3-ff6989fb2068",
+              "leftValue": "={{ $json.stderr }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "0e0220ba-e430-499f-8a33-be6a1929e81b",
+              "leftValue": "={{ $json.code }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        768,
+        48
+      ],
+      "id": "4b84a86b-56ec-4d4c-ac5b-5ff9754588ce",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=✅ Ghost update complete      \n\n{{ $json.stdout }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1072,
+        224
+      ],
+      "id": "2eb6005d-6641-481b-919f-4c26ba6627c6",
+      "name": "Send Success",
+      "webhookId": "adfae880-4d52-4cd8-b926-7f99aff1daaa",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=❌ Workflow failed: {{ $json.workflow.name }}\n\nError Code: {{ json.code }}\n\nError: {{ $json.stderr }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        976,
+        -48
+      ],
+      "id": "d51c779f-7561-423b-b44f-f27e2bfeeb2d",
+      "name": "Send Failure",
+      "webhookId": "2cfc662b-f779-4c9d-938d-0ebb568c980d",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * 0"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        400,
+        0
+      ],
+      "id": "be458a17-3961-49c7-9c1c-c138ceaa54cd",
+      "name": "Schedule Trigger"
+    }
+  ],
+  "connections": {
+    "Execute a command": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Send Failure",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "pinData": {}
+}

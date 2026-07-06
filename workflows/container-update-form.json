@@ -1,0 +1,200 @@
+{
+  "name": "Container Update Form",
+  "nodes": [
+    {
+      "id": "f1111111-aaaa-4aaa-aaaa-111111111111",
+      "name": "Update Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "79b1437d-3c8c-4ba4-8f9f-391d413a46fd",
+      "parameters": {
+        "formTitle": "Container Update",
+        "formDescription": "Select a service to pull the latest image and restart it.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Service",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "example-service-1"
+                  },
+                  {
+                    "option": "example-service-2"
+                  },
+                  {
+                    "option": "example-service-3"
+                  },
+                  {
+                    "option": "dmz:example-service"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "fd8bdd6b-5db7-4177-8719-3d081d77186e",
+      "name": "Route by Host",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "6b5f8466-8b69-4b8b-9812-69eae1442f86",
+              "leftValue": "={{ $json.Service }}",
+              "rightValue": "dmz:",
+              "operator": {
+                "type": "string",
+                "operation": "startsWith"
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "s2222222-bbbb-4bbb-bbbb-222222222222",
+      "name": "Run Update via SSH",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        560,
+        -120
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - Internal Docker Host"
+        }
+      },
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=cd <path-to-compose-files>/{{ $json.Service }} && docker compose pull && docker compose up -d 2>&1"
+      }
+    },
+    {
+      "id": "5269ef7b-4ab7-417c-8471-cd86a6310dd7",
+      "name": "Run Update via SSH (DMZ)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        560,
+        120
+      ],
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - DMZ Docker Host"
+        }
+      },
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=cd <path-to-dmz-compose-files>/{{ $json.Service.replace(\"dmz:\", \"\") }} && docker compose pull && docker compose up -d 2>&1"
+      }
+    },
+    {
+      "id": "t3333333-cccc-4ccc-cccc-333333333333",
+      "name": "Notify Complete",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        840,
+        0
+      ],
+      "webhookId": "8b55852a-0c68-4e9b-a195-63af0fd49b94",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      },
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=✅ <b>Update Complete</b>\n\n<b>Host:</b> {{ $('Update Form').first().json.Service.startsWith('dmz:') ? 'DMZ' : 'Internal' }}\n<b>Service:</b> <code>{{ $('Update Form').first().json.Service.replace('dmz:', '')}}</code>\n\n<pre>{{ $json.stdout.slice(-2000) }}</pre>",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Update Form": {
+      "main": [
+        [
+          {
+            "node": "Route by Host",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Host": {
+      "main": [
+        [
+          {
+            "node": "Run Update via SSH (DMZ)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Run Update via SSH",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Update via SSH": {
+      "main": [
+        [
+          {
+            "node": "Notify Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Update via SSH (DMZ)": {
+      "main": [
+        [
+          {
+            "node": "Notify Complete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "pinData": {}
+}

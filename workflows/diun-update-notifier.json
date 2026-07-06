@@ -1,0 +1,62 @@
+{
+  "name": "DIUN Update Notifier",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "diun",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "d8c30da3-4a60-48c1-a877-f68019942461",
+      "name": "Webhook",
+      "webhookId": "1e970246-8c8b-4960-b057-6061e144a604"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=  🐳 Image update available \n\nHost: {{ $json.body.hostname }}\nContainer: {{ $json.body.metadata.ctn_names }}   \nImage: {{ $json.body.image }}\nHub Link: {{ $json.body.hub_link }}\n\nTo Update: https://YOUR_N8N_DOMAIN/form/YOUR_CONTAINER_UPDATE_FORM_WEBHOOK_ID",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "72a4589c-32a4-49d9-8b0e-155bbac2b5a4",
+      "name": "Send a text message",
+      "webhookId": "2d2c419e-a06c-4dc7-8635-e377200b4fad",
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "pinData": {}
+}
