@@ -21,6 +21,7 @@ below, and the per-workflow doc for details specific to that flow.
 | [Nightly Server Updates](docs/nightly-server-updates.md) | Schedule (daily, ×2) | OS-level `apt`/Docker-cleanup patching across four hosts in one workflow — including a fire-and-forget pattern for safely patching the Docker host that n8n itself runs on. |
 | [DIUN Update Notifier](docs/diun-update-notifier.md) | Webhook | Receives [Diun](https://crazymax.dev/diun/) container-image-update notifications and forwards them to Telegram with a link to trigger an update. |
 | [Container Update Form](docs/container-update-form.md) | Form | A web form to multi-select Docker Compose services across two hosts and have n8n SSH in, `docker compose pull && up -d` each, and report per-service results. |
+| [Opportunity to Deal Room](docs/opportunity-to-deal-room.md) *(hypothetical)* | Webhook (Slack slash command) | Not a homelab-maintenance workflow like the rest of this list — a **genericized, hypothetical example** of a Slack/CRM deal-room provisioning pattern, included purely to document three n8n error-handling techniques (webhook signature verification, tolerating partial third-party lookup failures, reconverging parallel branches with a Merge node) that are broadly useful and worth having a reference for. No real integration is implied. |
 
 Workflows that existed on the source instance but were dev/test scaffolding
 with no real usage (an in-progress "approval" variant, a default "My workflow"

@@ -1,0 +1,810 @@
+{
+  "name": "Opportunity to Deal Room (Hypothetical Example)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "opportunity-framework",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "id": "40342eb9-e3ea-4663-bc5d-3bef3dc2c000",
+      "name": "Slack Slash Command",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -880,
+        304
+      ],
+      "webhookId": "a264abdb-53c2-4623-8b51-5d6787f64ad9",
+      "notes": "Register this URL as the Request URL for the /new-opp slash command in your Slack app config. IMPORTANT: enable 'Raw Body' under Options so the Code node below can verify the Slack signature against the exact bytes Slack sent."
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst item = $input.first();\nconst headers = item.json.headers || {};\nconst timestamp = headers['x-slack-request-timestamp'];\nconst slackSignature = headers['x-slack-signature'];\nconst signingSecret = $env.SLACK_SIGNING_SECRET;\n\nconst rawBodyBase64 = item.binary?.data?.data;\nif (!rawBodyBase64) {\n  throw new Error('Raw body not found in binary data - check the Webhook node has Raw Body enabled and confirm the binary property name');\n}\nconst rawBody = Buffer.from(rawBodyBase64, 'base64').toString('utf8');\n\nconst baseString = `v0:${timestamp}:${rawBody}`;\nconst computedSignature = 'v0=' + crypto.createHmac('sha256', signingSecret).update(baseString).digest('hex');\nconst withinTimeWindow = Math.abs((Date.now() / 1000) - Number(timestamp)) < 300;\nconst isValidSignature = withinTimeWindow && crypto.timingSafeEqual(Buffer.from(computedSignature), Buffer.from(slackSignature || ''));\n\nconst body = item.json.body || {};\nreturn [{\n  json: {\n    isValidSignature,\n    requestingUserId: body.user_id,\n    originChannelId: body.channel_id,\n    responseUrl: body.response_url\n  }\n}];"
+      },
+      "id": "61398e76-5e7b-4f3e-a992-65648a41883c",
+      "name": "Verify Slack Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -656,
+        304
+      ],
+      "alwaysOutputData": false,
+      "executeOnce": false,
+      "notes": "PLACEHOLDER: SLACK_SIGNING_SECRET must be set as an n8n environment variable - pull this from your Slack app's Basic Information page."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-sig-valid",
+              "leftValue": "={{ $json.isValidSignature }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "01271312-145f-4477-aecd-f6cd3b9eea77",
+      "name": "Signature Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -448,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.responseUrl }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"response_type\": \"ephemeral\", \"text\": \"Request could not be verified. Please try the command again.\" } }}",
+        "options": {}
+      },
+      "id": "aec96214-3415-40e4-8e58-d775fc6810a2",
+      "name": "Notify Signature Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -224,
+        464
+      ],
+      "notes": "Branch ends here - initial webhook ack was already sent, so this posts a follow-up error via response_url."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-sfdc-id",
+              "name": "sfdcOpportunityId",
+              "type": "string",
+              "value": "={{ $('Slack Slash Command').item.json.body.text.match(/Opportunity\\/(\\w{15,18})/)?.[1] }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "72d3915f-adf4-46f8-bb3d-9decf83d8b97",
+      "name": "Parse SFDC Opportunity ID",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -224,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://PLACEHOLDER_SFDC_INSTANCE_URL.my.salesforce.com/services/data/v61.0/query?q={{ encodeURIComponent(\"SELECT Id, Name, Account.Name, StageName, Owner.Email, PLACEHOLDER_RVP_RELATIONSHIP_NAME.Email, PLACEHOLDER_REGIONAL_SE_DIRECTOR_RELATIONSHIP_NAME.Email, PLACEHOLDER_PRIMARY_SE_RELATIONSHIP_NAME.Email, PLACEHOLDER_SECONDARY_SE_RELATIONSHIP_NAME.Email FROM Opportunity WHERE Id = '\" + $json.sfdcOpportunityId + \"'\") }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "salesforceOAuth2Api",
+        "options": {}
+      },
+      "id": "f1b79bf7-0324-4090-afa6-44aac6b85768",
+      "name": "Get Salesforce Opportunity",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        -32
+      ],
+      "credentials": {
+        "salesforceOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Salesforce account"
+        }
+      },
+      "notes": "PLACEHOLDER: replace PLACEHOLDER_SFDC_INSTANCE_URL with your Salesforce instance hostname, and the four PLACEHOLDER_*_RELATIONSHIP_NAME tokens with the real API relationship names for those lookup/role fields in your org (they're custom fields here, not standard SFDC fields)."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f1",
+              "name": "oppName",
+              "type": "string",
+              "value": "={{ $json.records[0].Name }}"
+            },
+            {
+              "id": "f2",
+              "name": "accountName",
+              "type": "string",
+              "value": "={{ $json.records[0].Account?.Name }}"
+            },
+            {
+              "id": "f3",
+              "name": "stageName",
+              "type": "string",
+              "value": "={{ $json.records[0].StageName }}"
+            },
+            {
+              "id": "f4",
+              "name": "accountExecutiveEmail",
+              "type": "string",
+              "value": "={{ $json.records[0].Owner?.Email }}"
+            },
+            {
+              "id": "f5",
+              "name": "salesManagerEmail",
+              "type": "string",
+              "value": "={{ $json.records[0].PLACEHOLDER_RVP_RELATIONSHIP_NAME?.Email }}"
+            },
+            {
+              "id": "f6",
+              "name": "salesEngineerManagerEmail",
+              "type": "string",
+              "value": "={{ $json.records[0].PLACEHOLDER_REGIONAL_SE_DIRECTOR_RELATIONSHIP_NAME?.Email }}"
+            },
+            {
+              "id": "f7",
+              "name": "primarySeEmail",
+              "type": "string",
+              "value": "={{ $json.records[0].PLACEHOLDER_PRIMARY_SE_RELATIONSHIP_NAME?.Email }}"
+            },
+            {
+              "id": "f8",
+              "name": "secondarySeEmail",
+              "type": "string",
+              "value": "={{ $json.records[0].PLACEHOLDER_SECONDARY_SE_RELATIONSHIP_NAME?.Email }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "00b65d0c-1e6e-4b9b-9c57-1c7a4996b8be",
+      "name": "Extract Opportunity Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        144
+      ],
+      "notes": "SOQL responses wrap results in a 'records' array, hence records[0] below. Field names map to Owner (AE), RVP (Sales Manager), Regional SE Director (SE Manager), Primary SE Assigned, Secondary SE Assigned - SDR intentionally excluded. secondarySeEmail is expected to sometimes be null/absent, handled downstream."
+    },
+    {
+      "parameters": {
+        "jsCode": "const slugify = (s) => (s || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');\n\nconst item = $input.first().json;\n\nconst accountSlug = slugify(item.accountName);\nconst oppSlug = slugify(item.oppName);\nconst channelName = `opp-${accountSlug}-${oppSlug}`.slice(0, 80);\n\nreturn [{\n  json: {\n    ...item,\n    channelName,\n    channelTopic: `${item.oppName} - ${item.stageName}`\n  }\n}];"
+      },
+      "id": "ce69ec19-8e90-47fa-94fb-4d6e6fc0d8fa",
+      "name": "Derive Channel Variables",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        144
+      ],
+      "notes": "Builds the Slack channel name/topic from the opportunity fields above (opp-<account>-<opportunity>, truncated to Slack's 80-char channel name limit). Role-email-to-Slack-ID resolution happens separately, in the Build Email List -> Look up a user by email branch below, so a single bad/missing email can't fail the whole run."
+    },
+    {
+      "parameters": {
+        "resource": "channel",
+        "channelId": "={{ $json.channelName }}"
+      },
+      "id": "7ec0c5be-3e3d-490b-8d76-e0cc2bf43719",
+      "name": "Create Slack Channel",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        144
+      ],
+      "webhookId": "b75a9ec4-71d2-4ab2-92a3-7fb91375959b",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      },
+      "notes": "PLACEHOLDER credential: bot token from your Slack app, scopes: channels:manage, chat:write, users:read, bookmarks:write."
+    },
+    {
+      "parameters": {
+        "jsCode": "const f = $('Extract Opportunity Fields').item.json;\nconst channelId = $('Create Slack Channel').item.json.id;\nconst emails = [f.accountExecutiveEmail, f.salesManagerEmail, f.salesEngineerManagerEmail, f.primarySeEmail, f.secondarySeEmail].filter(Boolean);\nreturn emails.map(email => ({ json: { email, channelId } }));"
+      },
+      "id": "b486bb6f-4660-4423-8940-1b6e8dc115b8",
+      "name": "Build Email List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        144
+      ],
+      "notes": "Fans the filtered role emails out into one item per email so the native Slack lookup node (which runs once per item) can resolve each one individually."
+    },
+    {
+      "parameters": {
+        "resource": "user",
+        "operation": "lookupByEmail",
+        "email": "={{ $json.email }}"
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        1120,
+        144
+      ],
+      "id": "d7581773-185b-420e-8a83-8649eb5a8013",
+      "name": "Look up a user by email",
+      "webhookId": "189c21ee-1fa4-46f4-bb8f-64f1fdde8f1d",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "cond-lookup-ok",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "459df88d-810b-43b4-9340-ec951ac1eb20",
+      "name": "Only Successful Lookups",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        144
+      ],
+      "notes": "Drops emails that failed users.lookupByEmail (onError=continueRegularOutput upstream keeps the run alive but leaves no id field on those items) so they don't end up as undefined entries in the invite list."
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "id",
+              "renameField": true,
+              "outputFieldName": "userIds"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "840120b1-2f19-45e2-ad85-b4d4917aa87f",
+      "name": "Aggregate Slack User IDs",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1568,
+        144
+      ],
+      "notes": "Collapses the N resolved-user items back into a single item with userIds: [...] so Invite Users to Channel can invite everyone in one conversations.invite call."
+    },
+    {
+      "parameters": {
+        "resource": "channel",
+        "operation": "invite",
+        "channelId": "={{ $('Create Slack Channel').item.json.id }}",
+        "userIds": "={{ [...new Set([...$json.userIds, $('Verify Slack Signature').item.json.requestingUserId])] }}"
+      },
+      "id": "ab395a32-4f9c-4a27-9c3c-0268a4ff0645",
+      "name": "Invite Users to Channel",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [
+        1792,
+        144
+      ],
+      "webhookId": "d4cd17f8-daf2-4f2e-ae07-d3b0e607022b",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      },
+      "notes": "If every lookup upstream failed, userIds may end up as just the requesting user - not an error, just means nobody else got auto-invited; see Send Confirmation's warning text for how that's surfaced to the requester."
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "recover-email",
+              "name": "email",
+              "type": "string",
+              "value": "={{ $('Build Email List').item.json.email }}"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "4c5ca8d3-e183-45d2-bff5-75aadc6381c8",
+      "name": "Recover Failed Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1344,
+        480
+      ],
+      "notes": "Look up a user by email replaces json entirely with {error: ...} on failure (onError: continueRegularOutput), losing the original email field. Recovers it via pairedItem back to Build Email List so Aggregate Failed Lookups has something to collect."
+    },
+    {
+      "parameters": {
+        "fieldsToAggregate": {
+          "fieldToAggregate": [
+            {
+              "fieldToAggregate": "email",
+              "renameField": true,
+              "outputFieldName": "unresolvedEmails"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "49f41ed8-e9ab-42e7-bfbe-454440dda1ee",
+      "name": "Aggregate Failed Lookups",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        1344,
+        336
+      ],
+      "notes": "Collects the emails that failed users.lookupByEmail (the Filter's discarded-items output) so Send Confirmation can report which ones need a manual invite."
+    },
+    {
+      "parameters": {
+        "resource": "folder",
+        "name": "={{ $('Derive Channel Variables').item.json.channelName }}",
+        "driveId": {
+          "mode": "list",
+          "value": "PLACEHOLDER_SHARED_DRIVE_ID"
+        },
+        "folderId": {
+          "mode": "list",
+          "value": "PLACEHOLDER_TEMPLATE_FOLDER_ID"
+        },
+        "options": {}
+      },
+      "id": "03e486fd-4a65-4611-b5d4-8d9a43c7a4b7",
+      "name": "Create Drive Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2016,
+        -32
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "REPLACE_ME",
+          "name": "Google Drive account"
+        }
+      },
+      "notes": "PLACEHOLDER: set driveId/folderId to a shared drive and template folder in your own Google Drive; requires a Google Drive credential with folder-create scope."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/bookmarks.add",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"channel_id\": $('Create Slack Channel').item.json.id, \"title\": \"Google Drive Folder\", \"type\": \"link\", \"link\": $json.webViewLink } }}",
+        "options": {}
+      },
+      "id": "f2b4c2c5-c3e6-48ad-b08c-bb20f410e154",
+      "name": "Add Bookmark - Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2208,
+        144
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      },
+      "notes": "Reads webViewLink from the immediate predecessor (Create Drive Folder). Reordered ahead of 'Add Bookmark - SFDC' specifically so this $json reference stays simple - don't insert another node between them without updating this reference."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://slack.com/api/bookmarks.add",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "slackApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"channel_id\": $('Create Slack Channel').item.json.id, \"title\": \"Salesforce Opportunity\", \"type\": \"link\", \"link\": $('Slack Slash Command').item.json.body.text } }}",
+        "options": {}
+      },
+      "id": "d2aededb-02ff-4385-b88e-03a8ea892b5c",
+      "name": "Add Bookmark - SFDC",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2432,
+        144
+      ],
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      },
+      "notes": "Uses named node references (not $json), so it's unaffected by node ordering elsewhere in the workflow."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://PLACEHOLDER_DEAL_REGISTRY_API_HOST/api/link-channel",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"slackChannelId\": $('Create Slack Channel').item.json.id, \"channelName\": $('Derive Channel Variables').item.json.channelName, \"oppName\": $('Extract Opportunity Fields').item.json.oppName, \"sfdcOpportunityId\": $('Parse SFDC Opportunity ID').item.json.sfdcOpportunityId } }}",
+        "options": {}
+      },
+      "id": "14d2182c-74f2-4408-ab12-4196b979d6a4",
+      "name": "Register Channel with Deal Registry",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2672,
+        -32
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Deal Registry API"
+        }
+      },
+      "notes": "Represents a generic 'system of record' callback - whatever downstream tool should know a deal room now exists (a CRM custom object, a wiki page, an internal registry API, etc). Swap the URL and auth for whatever that system actually is, or delete this node if you don't have one."
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {
+          "includeUnpaired": true
+        }
+      },
+      "id": "349615b7-e862-4e3a-8fbc-7b125f055d0c",
+      "name": "Sync Before Confirmation",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2928,
+        464
+      ],
+      "notes": "Pure synchronization gate before Send Confirmation - a Merge node only fires once every connected input branch has resolved (even a branch that produced 0 items, like Aggregate Failed Lookups when nothing failed). Without this, Send Confirmation could run before the parallel failed-lookups branch finished, reading stale/incomplete data via its $('Aggregate Failed Lookups') reference. includeUnpaired=true so the confirmation still fires when the failed-lookups side has 0 items (the normal, all-succeeded case)."
+    },
+    {
+      "parameters": {
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "={{ $('Slack Slash Command').item.json.body.user_id }}",
+          "mode": "id"
+        },
+        "text": "={{ `Opportunity workspace ready: <#${$('Create Slack Channel').item.json.id}> | Drive folder: ${$('Create Drive Folder').item.json.webViewLink}` + ($('Aggregate Failed Lookups').isExecuted && $('Aggregate Failed Lookups').first().json.unresolvedEmails.length ? `\\n\u26a0\ufe0f Could not resolve Slack accounts for: ${$('Aggregate Failed Lookups').first().json.unresolvedEmails.join(', ')} - please invite manually.` : '') }}",
+        "otherOptions": {}
+      },
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        3136,
+        464
+      ],
+      "id": "2b5d7283-5220-4efd-bf2e-8d9653bbbe63",
+      "name": "Send Confirmation",
+      "webhookId": "e6aba878-4e19-48e2-a4c5-c809821aa054",
+      "credentials": {
+        "slackApi": {
+          "id": "REPLACE_ME",
+          "name": "Slack account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Slack Slash Command": {
+      "main": [
+        [
+          {
+            "node": "Verify Slack Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Slack Signature": {
+      "main": [
+        [
+          {
+            "node": "Signature Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature Valid?": {
+      "main": [
+        [
+          {
+            "node": "Parse SFDC Opportunity ID",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Signature Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse SFDC Opportunity ID": {
+      "main": [
+        [
+          {
+            "node": "Get Salesforce Opportunity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Opportunity Fields": {
+      "main": [
+        [
+          {
+            "node": "Derive Channel Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Derive Channel Variables": {
+      "main": [
+        [
+          {
+            "node": "Create Slack Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Slack Channel": {
+      "main": [
+        [
+          {
+            "node": "Build Email List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invite Users to Channel": {
+      "main": [
+        [
+          {
+            "node": "Create Drive Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Bookmark - Drive": {
+      "main": [
+        [
+          {
+            "node": "Add Bookmark - SFDC",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Add Bookmark - SFDC": {
+      "main": [
+        [
+          {
+            "node": "Register Channel with Deal Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Confirmation": {
+      "main": [
+        []
+      ]
+    },
+    "Look up a user by email": {
+      "main": [
+        [
+          {
+            "node": "Only Successful Lookups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Email List": {
+      "main": [
+        [
+          {
+            "node": "Look up a user by email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Only Successful Lookups": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Slack User IDs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recover Failed Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Slack User IDs": {
+      "main": [
+        [
+          {
+            "node": "Invite Users to Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recover Failed Email": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Failed Lookups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Failed Lookups": {
+      "main": [
+        [
+          {
+            "node": "Sync Before Confirmation",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Sync Before Confirmation": {
+      "main": [
+        [
+          {
+            "node": "Send Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Salesforce Opportunity": {
+      "main": [
+        [
+          {
+            "node": "Extract Opportunity Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Drive Folder": {
+      "main": [
+        [
+          {
+            "node": "Add Bookmark - Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Register Channel with Deal Registry": {
+      "main": [
+        [
+          {
+            "node": "Sync Before Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
