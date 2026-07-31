@@ -101,8 +101,11 @@
       },
       "parameters": {
         "authentication": "privateKey",
-        "command": "=cd <path-to-compose-files>/{{ $json['Internal Services'] }} && docker compose pull && docker compose up -d 2>&1"
-      }
+        "command": "=set -o pipefail\ncd <path-to-compose-files>/{{ $json['Internal Services'] }} || { echo \"ERROR: compose dir not found\"; exit 1; }\npulled=0\nfor attempt in 1 2 3; do\n  if docker compose pull 2>&1; then pulled=1; break; fi\n  echo \"--- pull attempt $attempt failed (likely transient registry TLS timeout); retrying in 10s ---\"\n  sleep 10\ndone\nif [ \"$pulled\" -ne 1 ]; then\n  echo \"ERROR: docker compose pull failed after 3 attempts\"\n  exit 1\nfi\ndocker compose up -d 2>&1\n"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "5269ef7b-4ab7-417c-8471-cd86a6310dd7",
@@ -121,8 +124,11 @@
       },
       "parameters": {
         "authentication": "privateKey",
-        "command": "=cd <path-to-dmz-compose-files>/{{ $json['DMZ Services'] }} && docker compose pull && docker compose up -d 2>&1"
-      }
+        "command": "=set -o pipefail\ncd <path-to-dmz-compose-files>/{{ $json['DMZ Services'] }} || { echo \"ERROR: compose dir not found\"; exit 1; }\npulled=0\nfor attempt in 1 2 3; do\n  if docker compose pull 2>&1; then pulled=1; break; fi\n  echo \"--- pull attempt $attempt failed (likely transient registry TLS timeout); retrying in 10s ---\"\n  sleep 10\ndone\nif [ \"$pulled\" -ne 1 ]; then\n  echo \"ERROR: docker compose pull failed after 3 attempts\"\n  exit 1\nfi\ndocker compose up -d 2>&1\n"
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "d5d794da-09c4-4cb2-87dd-4eb24f52401c",

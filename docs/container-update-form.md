@@ -23,7 +23,7 @@ in one submission.
 | Update Form | `formTrigger` | Renders a form with two optional multi-select dropdowns: **Internal Services** and **DMZ Services**. |
 | Split Internal Services | `splitOut` | Turns a multi-value `Internal Services` selection into one item per service. |
 | Split DMZ Services | `splitOut` | Same, for `DMZ Services`. |
-| Run Update via SSH | `ssh` | For each internal service: `cd <path-to-compose-files>/<service> && docker compose pull && docker compose up -d`. |
+| Run Update via SSH | `ssh` | For each internal service: `cd <path-to-compose-files>/<service>`, then `docker compose pull` **retried up to 3× with a 10s backoff**, then `docker compose up -d`. |
 | Run Update via SSH (DMZ) | `ssh` | Same, against the DMZ host's compose directory, for each DMZ service. |
 | Tag Internal / Tag DMZ | `code` | Stamp `hostLabel` and `serviceName` onto each result for the notification text. |
 | Code in JavaScript | `code` | Determines success/failure **by exit code only** — `docker compose pull`/`up` write normal progress output to `stderr` even when they succeed, so checking for non-empty `stderr` (as a naive check would) produces false failures. Also trims output to the last 2000 characters. |
@@ -61,7 +61,33 @@ in one submission.
    rather than routed through n8n's error-workflow mechanism.
 7. The SSH user needs permission to run `docker compose` in the target
    directories without a password prompt (e.g. is in the `docker` group).
-8. Selecting several services in one submission fires all of them
-   concurrently (n8n doesn't serialize `splitOut` branches) — if your host
-   can't handle parallel `docker compose pull`s well, keep selections to one
-   service at a time.
+8. Selecting several services in one submission processes them **sequentially**
+   — the SSH node loops over its input items one at a time, and the DMZ branch
+   only starts after the internal branch finishes. (Verified 2026-07-31 from
+   execution timing data; an earlier version of this doc wrongly claimed the
+   branches fired concurrently.) The only parallelism is *within* a single
+   `docker compose pull`, which fetches a stack's images side by side.
+
+## Reliability notes
+
+Pulls intermittently fail with `net/http: TLS handshake timeout` against
+Docker Hub / ghcr.io. This is not specific to any one service — observed
+hitting `gitea/gitea`, `postgres`, `grafana`, and `paperless-ngx` on
+different runs, across both registries. A single failed image aborts that
+stack's whole `docker compose pull`, so the update reports as failed.
+
+Two things make this worse than it looks:
+
+- The **SSH node does not error on a non-zero exit code** — it returns the
+  exit code as data (`$json.code`). So n8n's own `retryOnFail` never fires
+  for a failed `docker compose pull`; the retry has to live *inside* the
+  SSH command. That's what the `for attempt in 1 2 3` loop does.
+- The more services you select, the more images are pulled, so the odds
+  that at least one hits the intermittent timeout compound.
+
+`retryOnFail` is still set on both SSH nodes, but only covers genuine
+SSH/connection errors (the node actually throwing).
+
+Host-side, `/etc/docker/daemon.json` sets `max-concurrent-downloads: 2` to
+reduce simultaneous layer fetches. Note this may be only partially honored
+under Docker's containerd image store (Docker 29 default).
