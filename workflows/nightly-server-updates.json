@@ -2,6 +2,14 @@
   "name": "Nightly Server Updates (AMP / DMZ / Ghost / Technitium / Docker Host)",
   "nodes": [
     {
+      "id": "c1f1cc89-d03e-4b3f-8ad3-2e70d4b7c283",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        160,
+        48
+      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -11,51 +19,42 @@
             }
           ]
         }
-      },
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.3,
-      "position": [
-        160,
-        48
-      ],
-      "id": "c1f1cc89-d03e-4b3f-8ad3-2e70d4b7c283",
-      "name": "Schedule Trigger"
+      }
     },
     {
-      "parameters": {
-        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo apt upgrade -y 2>&1 && docker container prune -f 2>&1 && docker network prune -f 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1"
-      },
+      "id": "6ebcb2ed-3e8f-465d-a084-94ad0dc9c3f4",
+      "name": "Update AMP",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
+      "alwaysOutputData": true,
       "position": [
         400,
         -160
       ],
-      "id": "6ebcb2ed-3e8f-465d-a084-94ad0dc9c3f4",
-      "name": "Update AMP",
-      "alwaysOutputData": true,
+      "parameters": {
+        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo env DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1"
+      },
       "credentials": {
         "sshPassword": {
           "id": "REPLACE_ME",
           "name": "SSH Password - AMP Server"
         }
-      },
-      "disabled": true
+      }
     },
     {
-      "parameters": {
-        "authentication": "privateKey",
-        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo apt upgrade -y 2>&1 && docker container prune -f 2>&1 && docker network prune -f 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1"
-      },
       "id": "3e1fef4c-f96d-4f87-91b9-c24447cb56c2",
       "name": "Update DMZ",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
+      "alwaysOutputData": true,
       "position": [
         400,
         48
       ],
-      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo env DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef 2>&1 && docker container prune -f 2>&1 && docker network prune -f 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1"
+      },
       "credentials": {
         "sshPrivateKey": {
           "id": "REPLACE_ME",
@@ -64,19 +63,19 @@
       }
     },
     {
-      "parameters": {
-        "authentication": "privateKey",
-        "command": "apt update 2>&1 && echo \"---UPDATE DONE---\" && apt upgrade -y 2>&1"
-      },
       "id": "f924e4be-0692-490c-89c6-5e72efcfd487",
       "name": "Update Ghost",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
+      "alwaysOutputData": true,
       "position": [
         400,
         240
       ],
-      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "apt update 2>&1 && echo \"---UPDATE DONE---\" && env DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef 2>&1"
+      },
       "credentials": {
         "sshPrivateKey": {
           "id": "REPLACE_ME",
@@ -85,10 +84,6 @@
       }
     },
     {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'AMP Server',\n    hasDocker: true,\n  },\n};"
-      },
       "id": "27d39c82-e355-401d-b616-e9f69709100b",
       "name": "Tag AMP",
       "type": "n8n-nodes-base.code",
@@ -97,13 +92,12 @@
         640,
         -160
       ],
-      "disabled": true
-    },
-    {
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'DMZ Server',\n    hasDocker: true,\n  },\n};"
-      },
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'AMP Server',\n    hasDocker: true,\n  },\n};"
+      }
+    },
+    {
       "id": "9cb222b6-1a42-44ce-8393-bc5a6ad1a2b7",
       "name": "Tag DMZ",
       "type": "n8n-nodes-base.code",
@@ -111,13 +105,13 @@
       "position": [
         640,
         48
-      ]
-    },
-    {
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'Ghost (Ubuntu)',\n    hasDocker: false,\n  },\n};"
-      },
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'DMZ Server',\n    hasDocker: true,\n  },\n};"
+      }
+    },
+    {
       "id": "d6945bae-acee-4a89-8f0b-b4f14277d728",
       "name": "Tag Ghost",
       "type": "n8n-nodes-base.code",
@@ -125,23 +119,35 @@
       "position": [
         640,
         240
-      ]
-    },
-    {
+      ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const stdout = $json.stdout || '';\nconst stderr = $json.stderr || '';\nconst exitCode = $json.code;\nconst hasDocker = $json.hasDocker;\nconst failed = exitCode != 0 || !!stderr;\n\nconst stages = [\n  { label: 'Refresh package lists (apt update)', test: s => s.includes('---UPDATE DONE---') },\n  { label: 'Upgrade installed packages (apt upgrade)', test: s => /\\d+ upgraded, \\d+ newly installed/.test(s) },\n];\nif (hasDocker) {\n  stages.push({ label: 'Docker cleanup (containers, networks, dangling images, build cache)', test: () => !failed });\n}\n\nlet reachedIndex = -1;\nfor (let i = 0; i < stages.length; i++) {\n  if (stages[i].test(stdout)) reachedIndex = i;\n}\n\nconst checklist = stages.map((stage, i) => {\n  if (i <= reachedIndex) return `✅ ${stage.label}`;\n  if (i === reachedIndex + 1 && failed) return `❌ ${stage.label}`;\n  return `⏭️ ${stage.label} (not reached)`;\n}).join('\\n');\n\nreturn {\n  json: {\n    ...$json,\n    status: failed ? 'failure' : 'success',\n    summary: failed\n      ? `${checklist}\\n\\nError detail:\\n${stderr || '(no stderr captured — check exit code ' + exitCode + ')'}`\n      : checklist,\n  },\n};"
-      },
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'Ghost (Ubuntu)',\n    hasDocker: false,\n  },\n};"
+      }
+    },
+    {
+      "id": "0bd8e666-e371-4667-8e59-94ef70e06b1c",
+      "name": "Code in JavaScript",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
         880,
         48
       ],
-      "id": "0bd8e666-e371-4667-8e59-94ef70e06b1c",
-      "name": "Code in JavaScript"
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const stdout = $json.stdout || '';\nconst stderr = $json.stderr || '';\nconst exitCode = $json.code;\nconst hasDocker = $json.hasDocker;\nconst failed = exitCode != 0 || !!stderr;\n\nconst stages = [\n  { label: 'Refresh package lists (apt update)', test: s => s.includes('---UPDATE DONE---') },\n  { label: 'Upgrade installed packages (apt upgrade)', test: s => /\\d+ upgraded, \\d+ newly installed/.test(s) },\n];\nif (hasDocker) {\n  stages.push({ label: 'Docker cleanup (containers, networks, dangling images, build cache)', test: () => !failed });\n}\n\nlet reachedIndex = -1;\nfor (let i = 0; i < stages.length; i++) {\n  if (stages[i].test(stdout)) reachedIndex = i;\n}\n\nconst checklist = stages.map((stage, i) => {\n  if (i <= reachedIndex) return `\u2705 ${stage.label}`;\n  if (i === reachedIndex + 1 && failed) return `\u274c ${stage.label}`;\n  return `\u23ed\ufe0f ${stage.label} (not reached)`;\n}).join('\\n');\n\nreturn {\n  json: {\n    ...$json,\n    status: failed ? 'failure' : 'success',\n    summary: failed\n      ? `${checklist}\\n\\nError detail:\\n${stderr || '(no stderr captured \u2014 check exit code ' + exitCode + ')'}`\n      : checklist,\n  },\n};"
+      }
     },
     {
+      "id": "84951580-0dd5-4dfe-a252-4fd01864dc51",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1120,
+        48
+      ],
       "parameters": {
         "conditions": {
           "options": {
@@ -165,31 +171,23 @@
         },
         "looseTypeValidation": true,
         "options": {}
-      },
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2.3,
-      "position": [
-        1120,
-        48
-      ],
-      "id": "84951580-0dd5-4dfe-a252-4fd01864dc51",
-      "name": "Check Success"
+      }
     },
     {
-      "parameters": {
-        "chatId": "YOUR_TELEGRAM_CHAT_ID",
-        "text": "=✅ Update complete on {{ $json.hostLabel }}\n\n{{ $json.summary }}",
-        "additionalFields": {}
-      },
+      "id": "93a7ace7-d660-410e-a9a2-34031e26efb4",
+      "name": "Notify Success",
+      "webhookId": "b29b2d19-1c4f-47b5-8e4d-391ea6631a27",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
         1360,
         -48
       ],
-      "id": "93a7ace7-d660-410e-a9a2-34031e26efb4",
-      "name": "Notify Success",
-      "webhookId": "b29b2d19-1c4f-47b5-8e4d-391ea6631a27",
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=\u2705 Update complete on {{ $json.hostLabel }}\n\n{{ $json.summary }}",
+        "additionalFields": {}
+      },
       "credentials": {
         "telegramApi": {
           "id": "REPLACE_ME",
@@ -198,20 +196,20 @@
       }
     },
     {
-      "parameters": {
-        "chatId": "YOUR_TELEGRAM_CHAT_ID",
-        "text": "=❌ Update failed on {{ $json.hostLabel }}\n\n{{ $json.summary }}",
-        "additionalFields": {}
-      },
+      "id": "37cfc118-4419-43c1-9037-5ad5f23bf52c",
+      "name": "Notify Failure",
+      "webhookId": "46b033c8-26b9-413b-b771-14a1e8235583",
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
         1360,
         128
       ],
-      "id": "37cfc118-4419-43c1-9037-5ad5f23bf52c",
-      "name": "Notify Failure",
-      "webhookId": "46b033c8-26b9-413b-b771-14a1e8235583",
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "=\u274c Update failed on {{ $json.hostLabel }}\n\n{{ $json.summary }}",
+        "additionalFields": {}
+      },
       "credentials": {
         "telegramApi": {
           "id": "REPLACE_ME",
@@ -220,19 +218,19 @@
       }
     },
     {
-      "parameters": {
-        "authentication": "privateKey",
-        "command": "nohup setsid bash -c 'sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo apt upgrade -y 2>&1 && docker container prune -f 2>&1 && docker network prune -f 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1; echo \"===EXIT_CODE:$?===\"' > ~/host-update.log 2>&1 < /dev/null & echo \"Update kicked off in background - check ~/host-update.log\""
-      },
       "id": "8d5d1ed7-f0b8-4eca-847f-9d7b1b7358a3",
       "name": "Kickoff Docker Host Update",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
+      "alwaysOutputData": true,
       "position": [
         400,
         448
       ],
-      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "nohup setsid bash -c 'sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo env DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef 2>&1 && docker image prune -f 2>&1 && docker builder prune -f 2>&1; echo \"===EXIT_CODE:$?===\"' > ~/host-update.log 2>&1 < /dev/null & echo \"Update kicked off in background - check ~/host-update.log\""
+      },
       "credentials": {
         "sshPrivateKey": {
           "id": "REPLACE_ME",
@@ -241,6 +239,14 @@
       }
     },
     {
+      "id": "e5c04c1e-582c-4eea-97a8-6312578eb5be",
+      "name": "Check Trigger (2:20am)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        160,
+        640
+      ],
       "parameters": {
         "rule": {
           "interval": [
@@ -250,30 +256,22 @@
             }
           ]
         }
-      },
-      "id": "e5c04c1e-582c-4eea-97a8-6312578eb5be",
-      "name": "Check Trigger (2:20am)",
-      "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.3,
-      "position": [
-        160,
-        640
-      ]
+      }
     },
     {
-      "parameters": {
-        "authentication": "privateKey",
-        "command": "cat ~/host-update.log 2>/dev/null || echo \"NO_LOG_FOUND\""
-      },
       "id": "0481e1d1-224c-4fdf-a1c4-de526563c805",
       "name": "Check Docker Host Update",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
+      "alwaysOutputData": true,
       "position": [
         400,
         640
       ],
-      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "cat ~/host-update.log 2>/dev/null || echo \"NO_LOG_FOUND\""
+      },
       "credentials": {
         "sshPrivateKey": {
           "id": "REPLACE_ME",
@@ -282,10 +280,6 @@
       }
     },
     {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "const log = $json.stdout || '';\nconst match = log.match(/===EXIT_CODE:(-?\\d+)===/);\nconst exitCode = match ? parseInt(match[1], 10) : -1;\n\nreturn {\n  json: {\n    code: exitCode,\n    stdout: log || '(no log found — update may not have started, or host may have restarted mid-run)',\n    stderr: '',\n    hostLabel: 'Docker Host (n8n)',\n    hasDocker: true,\n  },\n};"
-      },
       "id": "c0fa21c1-2f3c-45ea-9012-149b8270be9e",
       "name": "Tag Docker Host",
       "type": "n8n-nodes-base.code",
@@ -293,22 +287,26 @@
       "position": [
         640,
         640
-      ]
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const log = $json.stdout || '';\nconst match = log.match(/===EXIT_CODE:(-?\\d+)===/);\nconst exitCode = match ? parseInt(match[1], 10) : -1;\n\nreturn {\n  json: {\n    code: exitCode,\n    stdout: log || '(no log found \u2014 update may not have started, or host may have restarted mid-run)',\n    stderr: '',\n    hostLabel: 'Docker Host (n8n)',\n    hasDocker: true,\n  },\n};"
+      }
     },
     {
-      "parameters": {
-        "authentication": "privateKey",
-        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo apt upgrade -y 2>&1 "
-      },
+      "id": "5b0618ce-8072-4302-beae-56eab5f7f3c8",
+      "name": "Update Technitium Host",
       "type": "n8n-nodes-base.ssh",
       "typeVersion": 1,
+      "alwaysOutputData": true,
       "position": [
         400,
         -368
       ],
-      "id": "5b0618ce-8072-4302-beae-56eab5f7f3c8",
-      "name": "Update Technitium Host",
-      "alwaysOutputData": true,
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "sudo apt update 2>&1 && echo \"---UPDATE DONE---\" && sudo env DEBIAN_FRONTEND=noninteractive apt full-upgrade -y -o Dpkg::Options::=--force-confold -o Dpkg::Options::=--force-confdef 2>&1 "
+      },
       "credentials": {
         "sshPrivateKey": {
           "id": "REPLACE_ME",
@@ -317,10 +315,6 @@
       }
     },
     {
-      "parameters": {
-        "mode": "runOnceForEachItem",
-        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'Technitium Server',\n    hasDocker: false,\n  },\n};"
-      },
       "id": "6c532a8e-eee7-4963-b025-f65481d0de8f",
       "name": "Tag Technitium",
       "type": "n8n-nodes-base.code",
@@ -328,7 +322,11 @@
       "position": [
         640,
         -368
-      ]
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    ...$json,\n    hostLabel: 'Technitium Server',\n    hasDocker: false,\n  },\n};"
+      }
     }
   ],
   "connections": {
@@ -352,6 +350,11 @@
           },
           {
             "node": "Update Technitium Host",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Update AMP",
             "type": "main",
             "index": 0
           }
@@ -514,6 +517,7 @@
     "binaryMode": "separate",
     "availableInMCP": false,
     "timeSavedMode": "fixed",
+    "errorWorkflow": "5aDVWsdE78xPfzhP",
     "callerPolicy": "workflowsFromSameOwner"
   },
   "pinData": {}

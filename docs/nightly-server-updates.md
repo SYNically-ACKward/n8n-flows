@@ -57,30 +57,46 @@ on it:
 > exited with nothing to tell you. If you run this against a host with many
 > containers, raise `TimeoutStopSec` on `docker.service` first.
 
-## The AMP branch ships disabled
+## The AMP branch was re-enabled 2026-09-11
 
-`Update AMP` and `Tag AMP` are exported with `"disabled": true`, and the
-`Schedule Trigger → Update AMP` connection is **not** present — that host was
-taken offline and the branch was paused rather than deleted, so it can be
-switched back on later.
+It had shipped **disabled and disconnected** while that host was boxed for the
+house move: `Update AMP` and `Tag AMP` carried `"disabled": true`, and the
+`Schedule Trigger → Update AMP` edge was absent. Both nodes are now enabled and
+the trigger edge is reconnected.
 
-That combination is deliberate and worth understanding if you ever pause a
-host yourself: **a disabled n8n node passes its input straight through to its
-output.** Disabling the two AMP nodes *alone* would still let the trigger's
-item flow into `Code in JavaScript` carrying no `stdout` and no exit code —
-and that node computes `failed = exitCode != 0`, which `undefined` satisfies.
-You'd get a spurious failure notification every run. Detaching the trigger
-edge as well is what actually stops the branch executing.
+That original combination is still worth understanding if you ever pause a host
+yourself, because **a disabled n8n node passes its input straight through to its
+output.** Disabling the two AMP nodes *alone* would still let the trigger's item
+flow into `Code in JavaScript` carrying no `stdout` and no exit code — and that
+node computes `failed = exitCode != 0`, which `undefined` satisfies. You'd get a
+spurious failure notification every run. Detaching the trigger edge as well is
+what actually stops the branch executing.
 
-To re-enable: reconnect `Schedule Trigger → Update AMP` and clear `disabled`
-on both nodes.
+**Two things had to be fixed before it could be switched back on**, and both are
+easy to reintroduce:
 
+1. **`sudo env DEBIAN_FRONTEND=...` did not work on that host.** It had only a
+   narrow grant — `sysadmin ALL = NOPASSWD: /usr/bin/apt` — and `env` is not
+   `/usr/bin/apt`, so sudo would have prompted for a password and the node would
+   have hung indefinitely rather than failing. (The n8n SSH node does not error on
+   a non-zero exit, so a hang here is silent.) Resolved by giving the host the same
+   `NOPASSWD:ALL` drop-in the other hosts use.
+
+2. **`docker container prune -f` and `docker network prune -f` were removed.**
+   AMP runs each game instance as a Docker container (`cubecoders/ampbase:debian`,
+   named `AMP_<instance>`), so a *stopped* game server is an ordinary state — and
+   the nightly prune would have destroyed its container. The node now prunes images
+   and builder cache only, matching the Docker-host branch.
+
+Note this host also runs Ubuntu's own `unattended-upgrades`, so the two overlap.
+That is harmless — apt serialises on its own lock — but it means this branch is
+not the only thing patching the box.
 ## Nodes
 
 | Node | Type | What it does |
 |---|---|---|
 | Schedule Trigger | `scheduleTrigger` | Fans out to the synchronous update nodes plus the Docker host kickoff. |
-| Update AMP | `ssh` | `apt update/upgrade` + `docker ... prune -f` (containers, networks, images, builder), password auth. **Disabled and disconnected** — see above. |
+| Update AMP | `ssh` | `apt update/upgrade` + `docker image/builder prune -f`, password auth. **Re-enabled 2026-09-11**; container/network prune deliberately removed — see above. |
 | Update DMZ | `ssh` | Same command, on the DMZ host, key auth. |
 | Update Ghost | `ssh` | `apt update/upgrade` only (no Docker on this host), key auth. |
 | Update Technitium Host | `ssh` | `apt update/upgrade` only, on the host running DNS. Key auth. |
