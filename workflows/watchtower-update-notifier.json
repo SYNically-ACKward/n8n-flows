@@ -1,0 +1,273 @@
+{
+  "name": "Watchtower Update Notifier",
+  "nodes": [
+    {
+      "id": "1a7c4e10-0000-4000-8000-00000000a001",
+      "name": "Webhook",
+      "webhookId": "1a7c4e10-0000-4000-8000-00000000b001",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "watchtower",
+        "options": {}
+      }
+    },
+    {
+      "id": "1a7c4e10-0000-4000-8000-00000000a002",
+      "name": "Send a text message",
+      "webhookId": "1a7c4e10-0000-4000-8000-00000000b002",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        208,
+        0
+      ],
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ typeof $json.body === 'string' ? $json.body : $json.body.message }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "id": "64a10249-b001-4eb8-b0f3-6aa80a414b32",
+      "name": "Find Retryable Failures",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// Watchtower's report template renders each failure as two lines:\n//   ❌ <container> — <image>\n//      Failed: <error>\n// Only transient registry/network errors are retried; anything else\n// (bad tag, missing image, container create errors) would just fail again.\nconst raw = $input.first().json.body;\nconst body = typeof raw === 'string' ? raw : (raw?.message ?? '');\n\nlet host = null;\nif (/dmz-host/.test(body)) host = 'dmz';\nelse if (/internal-host/.test(body)) host = 'internal';\nif (!host) return [];\n\nconst RETRYABLE = /rate limit|toomanyrequests|\\b429\\b|TLS handshake timeout|i\\/o timeout|connection reset|context deadline exceeded|unexpected EOF|Client\\.Timeout/i;\n// The webhook is unauthenticated and names end up in a shell command, so\n// accept only what Docker itself allows in a container name.\nconst SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;\n\nconst lines = body.split('\\n');\nconst containers = [];\nfor (let i = 0; i < lines.length; i++) {\n  const m = lines[i].match(/^❌ (\\S+) — (\\S+)/);\n  if (!m || !SAFE_NAME.test(m[1])) continue;\n  const error = (lines[i + 1] || '').trim();\n  if (RETRYABLE.test(error) && !containers.some(c => c.name === m[1])) {\n    containers.push({ name: m[1], image: m[2], error });\n  }\n}\nif (!containers.length) return [];\n\nreturn [{\n  json: {\n    host,\n    hostLabel: host === 'dmz' ? 'dmz-host' : 'internal-host',\n    namesArg: containers.map(c => c.name).join(' '),\n    containers,\n  },\n}];"
+      }
+    },
+    {
+      "id": "00ef3ac0-1d3f-4185-8bd0-4e26f53e56ef",
+      "name": "Wait Before Retry",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "amount": 15,
+        "unit": "minutes"
+      },
+      "webhookId": "4261f819-eff4-4aa5-b204-504f1f9b8d75"
+    },
+    {
+      "id": "19d69285-7d45-4f84-81b4-608da4f8156d",
+      "name": "Which Host?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        660,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "ebe9987e-5f7f-4017-b93e-6dd8e1ca2090",
+              "leftValue": "={{ $json.host }}",
+              "rightValue": "dmz",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "dfd0a72a-1cb9-40c0-a7cd-486acb30db10",
+      "name": "Retry via Watchtower (DMZ)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        880,
+        100
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=cd <path-to-dmz-watchtower-compose-dir> || { echo '===RESULT:failed==='; exit 1; }\nfor attempt in 1 2 3; do\n  out=$(docker compose run --rm -e WATCHTOWER_NOTIFICATION_URL= watchtower --run-once {{ $('Find Retryable Failures').first().json.namesArg }} 2>&1)\n  summary=$(printf '%s\\n' \"$out\" | grep 'Update session completed' | tail -1 | sed -E 's/.*msg=\"Update session completed\" //')\n  echo \"attempt $attempt: ${summary:-no session summary}\"\n  printf '%s\\n' \"$out\" | grep -E 'level=(warn|error)|Found new image|Started new container' | grep -v 'Failed to retrieve image info' | sed -E 's/^time=[^ ]+ //' | cut -c1-300\n  case \"$summary\" in\n    *scanned=0*) echo 'container no longer exists, not retrying'; break ;;\n    *failed=0*) echo '===RESULT:ok==='; exit 0 ;;\n  esac\n  [ \"$attempt\" -lt 3 ] && sleep 120\ndone\necho '===RESULT:failed==='\n"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - DMZ Docker Host"
+        }
+      }
+    },
+    {
+      "id": "eadbb62b-3f82-449c-97bc-d1df78bd5f66",
+      "name": "Retry via Watchtower (Internal)",
+      "type": "n8n-nodes-base.ssh",
+      "typeVersion": 1,
+      "position": [
+        880,
+        300
+      ],
+      "parameters": {
+        "authentication": "privateKey",
+        "command": "=cd <path-to-internal-watchtower-compose-dir> || { echo '===RESULT:failed==='; exit 1; }\nfor attempt in 1 2 3; do\n  out=$(docker compose run --rm -e WATCHTOWER_NOTIFICATION_URL= watchtower --run-once {{ $('Find Retryable Failures').first().json.namesArg }} 2>&1)\n  summary=$(printf '%s\\n' \"$out\" | grep 'Update session completed' | tail -1 | sed -E 's/.*msg=\"Update session completed\" //')\n  echo \"attempt $attempt: ${summary:-no session summary}\"\n  printf '%s\\n' \"$out\" | grep -E 'level=(warn|error)|Found new image|Started new container' | grep -v 'Failed to retrieve image info' | sed -E 's/^time=[^ ]+ //' | cut -c1-300\n  case \"$summary\" in\n    *scanned=0*) echo 'container no longer exists, not retrying'; break ;;\n    *failed=0*) echo '===RESULT:ok==='; exit 0 ;;\n  esac\n  [ \"$attempt\" -lt 3 ] && sleep 120\ndone\necho '===RESULT:failed==='\n"
+      },
+      "credentials": {
+        "sshPrivateKey": {
+          "id": "REPLACE_ME",
+          "name": "SSH Private Key - Internal Docker Host"
+        }
+      }
+    },
+    {
+      "id": "a8830704-a565-4d9c-bd34-357056296d03",
+      "name": "Format Retry Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        200
+      ],
+      "parameters": {
+        "jsCode": "const src = $('Find Retryable Failures').first().json;\nconst stdout = ($json.stdout || '').trim();\nconst ok = stdout.includes('===RESULT:ok===');\nconst updated = /updated=([1-9]\\d*)/.test(stdout);\nconst log = stdout.replace(/===RESULT:\\w+===/g, '').trim().slice(-2500);\n\nconst head = ok\n  ? (updated ? '🔁✅ Watchtower retry succeeded' : '🔁✅ Watchtower retry: already current')\n  : '🔁❌ Watchtower retry failed — next scheduled run will try again';\n\nconst text = [\n  `${head} — ${src.hostLabel}`,\n  '',\n  ...src.containers.map(c => `• ${c.name} — ${c.image}`),\n  '',\n  log || (stdout ? '' : `(no output; ssh stderr: ${($json.stderr || '').slice(-500)})`),\n].join('\\n');\n\nreturn [{ json: { text } }];"
+      }
+    },
+    {
+      "id": "91f1215a-d312-4742-8be4-a3b2c33210a6",
+      "name": "Notify Retry Result",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1320,
+        200
+      ],
+      "parameters": {
+        "chatId": "YOUR_TELEGRAM_CHAT_ID",
+        "text": "={{ $json.text }}",
+        "additionalFields": {}
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "REPLACE_ME",
+          "name": "Telegram account"
+        }
+      },
+      "webhookId": "86d4a2d7-baec-435a-b70f-048d2eb0ed51"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Find Retryable Failures",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Retryable Failures": {
+      "main": [
+        [
+          {
+            "node": "Wait Before Retry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Retry": {
+      "main": [
+        [
+          {
+            "node": "Which Host?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Which Host?": {
+      "main": [
+        [
+          {
+            "node": "Retry via Watchtower (DMZ)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Retry via Watchtower (Internal)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry via Watchtower (DMZ)": {
+      "main": [
+        [
+          {
+            "node": "Format Retry Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Retry via Watchtower (Internal)": {
+      "main": [
+        [
+          {
+            "node": "Format Retry Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Retry Result": {
+      "main": [
+        [
+          {
+            "node": "Notify Retry Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

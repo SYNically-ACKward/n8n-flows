@@ -20,6 +20,7 @@ below, and the per-workflow doc for details specific to that flow.
 | [Update Ghost Blog](docs/update-ghost-blog.md) | Schedule (weekly) | SSHes into the host running Ghost and runs `ghost update`. |
 | [Nightly Server Updates](docs/nightly-server-updates.md) | Schedule (Sun/Tue/Thu, ×2) | OS-level `apt`/Docker-cleanup patching across five hosts in one workflow — including a fire-and-forget pattern for safely patching the Docker host that n8n itself runs on. One branch ships **disabled**, as a worked example of pausing a host without deleting it. |
 | [DIUN Update Notifier](docs/diun-update-notifier.md) | Webhook | Receives [Diun](https://crazymax.dev/diun/) container-image-update notifications and forwards them to Telegram with a link to trigger an update. |
+| [Watchtower Update Notifier](docs/watchtower-update-notifier.md) | Webhook | Forwards [Watchtower](https://github.com/nicholas-fedor/watchtower) auto-update reports to Telegram. When a container failed for a transient registry reason (rate limit, TLS timeout), it waits 15 min, SSHes in and reruns Watchtower for just those containers. |
 | [Container Update Form](docs/container-update-form.md) | Form | A web form to multi-select Docker Compose services across two hosts and have n8n SSH in, `docker compose pull && up -d` each, and report per-service results. |
 | [Opportunity to Deal Room](docs/opportunity-to-deal-room.md) *(hypothetical)* | Webhook (Slack slash command) | Not a homelab-maintenance workflow like the rest of this list — a **genericized, hypothetical example** of a Slack/CRM deal-room provisioning pattern, included purely to document three n8n error-handling techniques (webhook signature verification, tolerating partial third-party lookup failures, reconverging parallel branches with a Merge node) that are broadly useful and worth having a reference for. No real integration is implied. |
 
@@ -44,6 +45,9 @@ the new one.
   find it).
 - SSH access (key or password) from the n8n host to whatever machine(s) a
   given workflow manages.
+- For the Watchtower workflow: [Watchtower](https://github.com/nicholas-fedor/watchtower)
+  on each host, with a report template and `generic://` notification URL
+  pointed at this workflow's webhook (see its doc).
 - For the DIUN workflow: a running [Diun](https://crazymax.dev/diun/) instance
   configured to POST update notifications to this workflow's webhook URL.
 
